@@ -4,7 +4,7 @@ Automatically fetches NOTAMs (Notices to Airmen) for a specified airport and sen
 
 ## What it does
 
-- Polls the FAA NOTAM Search site (https://notams.aim.faa.gov/notamSearch/nsapp.html#/) for NOTAMs at a specified airport (default: KBLM - Monmouth Executive Airport)
+- Polls the FAA NOTAM Search site (https://notams.aim.faa.gov/notamSearch/nsapp.html#/) via headless Playwright: fills the search, downloads the Excel export, parses it, and extracts NOTAM text
 - Tracks previously seen NOTAMs to detect new ones
 - Cleans messages (removes emojis, formats text)
 - Sends new NOTAMs to a pager via Spok/USA Mobility web form using direct HTTP POST
@@ -64,6 +64,9 @@ PAGER_URL=https://secure.spokwireless.net
 - `PAGER_URL` - Pager service URL (default: https://secure.spokwireless.net)
 - `MAX_STORED_NOTAMS` - Maximum number of NOTAM IDs to keep in state (default: 1000)
 - `STARTUP_SEND_LATEST` - When `true` (default), send the most recent NOTAM once at startup even if already seen to verify delivery
+- `FAA_FETCH_TIMEOUT` - Playwright navigation/download timeout in ms (default 30000)
+- `FAA_RETRIES` / `FAA_RETRY_DELAY_MS` - Retry count/delay for the Excel download (defaults 3 / 2000)
+- `FAA_HEADLESS` - Set to `false` to watch the browser for debugging
 
 ### Common Airport Codes
 
@@ -93,7 +96,7 @@ The service will:
 
 ## How it works
 
-1. Application polls the FAA NOTAM Search site (public endpoints extracted from the HAR) at regular intervals
+1. Application drives the FAA NOTAM Search site headlessly with Playwright, downloads the Excel export, and parses it at regular intervals
 2. Compares fetched NOTAMs against previously seen ones (stored in `notam-state.json`)
 3. For each new NOTAM:
    - Formats and cleans the message (removes emojis, truncates to 240 chars)
