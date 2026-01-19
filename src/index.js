@@ -16,6 +16,7 @@ const AIRPORT_CODE = process.env.AIRPORT_CODE || 'KBLM'; // Monmouth Executive A
 const PAGER_PHONE_NUMBER = process.env.PAGER_PHONE_NUMBER;
 const POLL_INTERVAL = parseInt(process.env.POLL_INTERVAL) || 300000; // 5 minutes default
 const STARTUP_SEND_LATEST = process.env.STARTUP_SEND_LATEST !== 'false';
+const FAA_FETCH_TIMEOUT = process.env.FAA_FETCH_TIMEOUT || '15000';
 
 // Validate required configuration
 const missingEnv = [];
@@ -152,7 +153,8 @@ app.get('/health', (req, res) => {
   res.json({ 
     status: 'ok',
     polling: isPolling,
-    seenNotams: state.seenNotams.length
+    seenNotams: state.seenNotams.length,
+    faaFetchTimeoutMs: FAA_FETCH_TIMEOUT
   });
 });
 

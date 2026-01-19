@@ -9,6 +9,7 @@ const { CookieJar } = require('tough-cookie');
 
 const FAA_BASE_URL = process.env.FAA_BASE_URL || 'https://notams.aim.faa.gov/notamSearch';
 const USER_AGENT = 'NOTAM-Pager/2.0 (+https://github.com/szeremeta1/NOTAM-Pager)';
+const FAA_FETCH_TIMEOUT = parseInt(process.env.FAA_FETCH_TIMEOUT || '15000', 10);
 
 function createClient() {
   const jar = new CookieJar();
@@ -25,9 +26,9 @@ function baseHeaders() {
 
 async function bootstrapSession(client) {
   console.log('[notamFetcher] Bootstrapping FAA session...');
-  const splash = await client.fetch(`${FAA_BASE_URL}/nsapp.html`, { headers: baseHeaders() });
+  const splash = await client.fetch(`${FAA_BASE_URL}/nsapp.html`, { headers: baseHeaders(), timeout: FAA_FETCH_TIMEOUT });
   console.log(`[notamFetcher] nsapp.html status: ${splash.status}`);
-  const hdr = await client.fetch(`${FAA_BASE_URL}/hdr`, { headers: baseHeaders() });
+  const hdr = await client.fetch(`${FAA_BASE_URL}/hdr`, { headers: baseHeaders(), timeout: FAA_FETCH_TIMEOUT });
   console.log(`[notamFetcher] hdr status: ${hdr.status}`);
 }
 
@@ -135,6 +136,7 @@ async function fetchNotams(airportCode) {
 
     const searchBody = buildSearchBody(airportCode);
     console.log(`[notamFetcher] Posting search for ${airportCode}...`);
+    console.log(`[notamFetcher] Search body preview: ${searchBody.toString().slice(0, 200)}...`);
 
     const response = await client.fetch(`${FAA_BASE_URL}/search`, {
       method: 'POST',
@@ -142,7 +144,8 @@ async function fetchNotams(airportCode) {
         ...baseHeaders(),
         'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8'
       },
-      body: searchBody
+      body: searchBody,
+      timeout: FAA_FETCH_TIMEOUT
     });
 
     console.log(`[notamFetcher] search status: ${response.status}`);
