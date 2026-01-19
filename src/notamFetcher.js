@@ -37,13 +37,20 @@ async function fetchNotams(airportCode) {
     const data = await response.json();
     
     // Extract NOTAMs from the response
-    // The API structure may vary, adapt as needed
-    if (data && Array.isArray(data)) {
-      return data;
-    } else if (data && data.notamList && Array.isArray(data.notamList)) {
-      return data.notamList;
-    } else if (data && data.items && Array.isArray(data.items)) {
-      return data.items;
+    // The API structure may vary, check multiple possible paths
+    const possiblePaths = [
+      () => Array.isArray(data) ? data : null,
+      () => data.notamList,
+      () => data.items,
+      () => data.results,
+      () => data.data
+    ];
+    
+    for (const pathFn of possiblePaths) {
+      const result = pathFn();
+      if (result && Array.isArray(result)) {
+        return result;
+      }
     }
     
     return [];
@@ -60,12 +67,17 @@ async function fetchNotams(airportCode) {
  */
 function getNotamId(notam) {
   // Try various possible ID fields
-  return notam.id || 
-         notam.notamNumber || 
-         notam.number || 
-         notam.notamID ||
-         notam.icaoId ||
-         JSON.stringify(notam); // Fallback to full object as ID
+  const id = notam.id || 
+             notam.notamNumber || 
+             notam.number || 
+             notam.notamID ||
+             notam.icaoId;
+  
+  if (id) return String(id);
+  
+  // Fallback: create a hash-like identifier from key fields
+  const fallbackId = `${notam.message || notam.text || ''}_${notam.startDate || ''}_${notam.location || ''}`;
+  return fallbackId || `notam_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 }
 
 /**

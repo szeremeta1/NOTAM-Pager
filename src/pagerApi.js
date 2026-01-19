@@ -1,3 +1,5 @@
+const fetch = require('node-fetch');
+
 const BASE_URL = process.env.PAGER_URL || 'https://secure.spokwireless.net';
 
 // Normalize and clamp message to 240 chars (service limit in UI)

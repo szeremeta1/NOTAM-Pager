@@ -7,6 +7,7 @@ const fs = require('fs').promises;
 const path = require('path');
 
 const STATE_FILE = path.join(__dirname, '..', 'notam-state.json');
+const MAX_STORED_NOTAMS = parseInt(process.env.MAX_STORED_NOTAMS) || 1000;
 
 /**
  * Load the state of seen NOTAMs
@@ -55,9 +56,9 @@ function markNotamAsSeen(notamId, state) {
   if (!state.seenNotams.includes(notamId)) {
     state.seenNotams.push(notamId);
     
-    // Keep only last 1000 NOTAMs to prevent unbounded growth
-    if (state.seenNotams.length > 1000) {
-      state.seenNotams = state.seenNotams.slice(-1000);
+    // Keep only last N NOTAMs to prevent unbounded growth
+    if (state.seenNotams.length > MAX_STORED_NOTAMS) {
+      state.seenNotams = state.seenNotams.slice(-MAX_STORED_NOTAMS);
     }
   }
   return state;

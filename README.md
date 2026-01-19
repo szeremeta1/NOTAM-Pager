@@ -59,8 +59,9 @@ PAGER_URL=https://secure.spokwireless.net
 - `PORT` - HTTP server port (default: 3000)
 - `AIRPORT_CODE` - ICAO airport code to monitor (default: KBLM for Monmouth Executive Airport)
 - `POLL_INTERVAL` - How often to check for new NOTAMs in milliseconds (default: 300000 = 5 minutes)
-- `PAGER_PHONE_NUMBER` - Your pager number
+- `PAGER_PHONE_NUMBER` - **REQUIRED** Your pager number
 - `PAGER_URL` - Pager service URL (default: https://secure.spokwireless.net)
+- `MAX_STORED_NOTAMS` - Maximum number of NOTAM IDs to keep in state (default: 1000)
 
 ### Common Airport Codes
 

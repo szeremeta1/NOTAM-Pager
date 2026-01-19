@@ -13,8 +13,14 @@ const { loadState, saveState, getNewNotams, markNotamAsSeen } = require('./state
 const app = express();
 const PORT = process.env.PORT || 3000;
 const AIRPORT_CODE = process.env.AIRPORT_CODE || 'KBLM'; // Monmouth Executive Airport
-const PAGER_PHONE_NUMBER = process.env.PAGER_PHONE_NUMBER || '7322063021';
+const PAGER_PHONE_NUMBER = process.env.PAGER_PHONE_NUMBER;
 const POLL_INTERVAL = parseInt(process.env.POLL_INTERVAL) || 300000; // 5 minutes default
+
+// Validate required configuration
+if (!PAGER_PHONE_NUMBER) {
+  console.error('ERROR: PAGER_PHONE_NUMBER must be set in .env file');
+  process.exit(1);
+}
 
 let state = { seenNotams: [] };
 let pollingTimer = null;
