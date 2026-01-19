@@ -1,10 +1,10 @@
 # NOTAM-Pager
 
-Automatically fetches NOTAMs (Notices to Airmen) for a specified airport and sends new ones to a pager number. Similar to [uptime-kuma-pager](https://github.com/szeremeta1/uptime-kuma-pager), this service strips emojis and unsupported characters to ensure pager compatibility.
+Automatically fetches NOTAMs (Notices to Air Missions) for a specified airport and sends new ones to a pager number. Similar to [uptime-kuma-pager](https://github.com/szeremeta1/uptime-kuma-pager), this service strips emojis and unsupported characters to ensure pager compatibility.
 
 ## What it does
 
-- Drives the FAA NOTAM Search site (https://notams.aim.faa.gov/notamSearch/nsapp.html#/) with Playwright: accepts the disclaimer, fills the search for a location, downloads the Excel export, parses it, and extracts NOTAM text
+- Calls the FAA NMS NOTAM API (no browsers required) for a location
 - Tracks previously seen NOTAMs to detect new ones
 - Cleans messages (removes emojis, formats text)
 - Sends new NOTAMs to a pager via Spok/USA Mobility web form using direct HTTP POST
@@ -15,7 +15,7 @@ Automatically fetches NOTAMs (Notices to Airmen) for a specified airport and sen
 notam-pager/
 ├── src/
 │   ├── index.js          # Main application with polling logic
-│   ├── notamFetcher.js   # Playwright-driven FAA Excel fetch + parsing
+│   ├── notamFetcher.js   # FAA NMS API fetch + normalization
 │   ├── messageClean.js   # Emoji removal + formatting
 │   ├── pagerApi.js       # Direct HTTP POST sender
 │   └── stateManager.js   # Tracks seen NOTAMs
@@ -27,8 +27,9 @@ notam-pager/
 ## Prerequisites
 
 - Node.js 18+ recommended
+- FAA NMS NOTAM API access (base URL + API key)
 - A pager number compatible with Spok/USA Mobility service
-- Outbound HTTPS access to https://notams.aim.faa.gov/notamSearch
+- Outbound HTTPS access to the FAA NMS API and pager host
 
 ## Installation
 
@@ -37,12 +38,6 @@ notam-pager/
 
 ```bash
 npm install
-```
-
-If Playwright asks for browsers or fails to launch, install its browsers (one time):
-
-```bash
-npx playwright install
 ```
 
 3. Create a `.env` file based on `.env.example`:
@@ -59,6 +54,8 @@ AIRPORT_CODE=KBLM
 POLL_INTERVAL=300000
 PAGER_PHONE_NUMBER=7322063021
 PAGER_URL=https://secure.spokwireless.net
+FAA_NMS_API_URL=https://your-nms-endpoint.example/notams
+FAA_NMS_API_KEY=your_api_key_here
 ```
 
 ### Configuration Options
@@ -70,11 +67,11 @@ PAGER_URL=https://secure.spokwireless.net
 - `PAGER_URL` - Pager service URL (default: https://secure.spokwireless.net)
 - `MAX_STORED_NOTAMS` - Maximum number of NOTAM IDs to keep in state (default: 1000)
 - `STARTUP_SEND_LATEST` - When `true` (default), send the most recent NOTAM once at startup even if already seen to verify delivery
-- `FAA_BASE_URL` - Base URL for the FAA NOTAM Search (default: https://notams.aim.faa.gov/notamSearch)
-- `FAA_FETCH_TIMEOUT` - Playwright navigation/download timeout in ms (default: 45000)
-- `FAA_RETRIES` / `FAA_RETRY_DELAY_MS` - Retry count/delay for the Excel download (defaults: 3 / 2000)
-- `FAA_HEADLESS` - Set to `false` to watch the browser for debugging (default: true)
-- `FAA_BROWSER` - Browser engine to try first: `chromium`, `firefox`, or `webkit` (default: chromium; others are used as fallbacks)
+- `FAA_NMS_API_URL` - **REQUIRED** Base URL to the FAA NMS NOTAM endpoint
+- `FAA_NMS_API_KEY` - **REQUIRED** API key/token for the NMS API
+- `FAA_NMS_API_KEY_HEADER` - HTTP header name for the key (default: `x-api-key`)
+- `FAA_NMS_TIMEOUT` - API request timeout in ms (default: 15000)
+- `FAA_NMS_MAX_RESULTS` - Max NOTAMs to request per poll (default: 200)
 
 ### Common Airport Codes
 
@@ -92,7 +89,7 @@ npm start
 
 The service will:
 1. Start an HTTP server on the configured port
-2. Begin polling for NOTAMs at the specified interval
+2. Begin polling the FAA NMS API at the specified interval
 3. Send new NOTAMs to the configured pager number
 
 ## Endpoints
@@ -104,13 +101,13 @@ The service will:
 
 ## How it works
 
-1. Application drives the FAA NOTAM Search site headlessly with Playwright, downloads the Excel export, and parses it at regular intervals
+1. Application calls the FAA NMS NOTAM API for the configured airport
 2. Compares fetched NOTAMs against previously seen ones (stored in `notam-state.json`)
 3. For each new NOTAM:
    - Formats and cleans the message (removes emojis, truncates to 240 chars)
    - Sends to pager via direct HTTP POST to Spok service
    - Marks as seen in state file
-4. Repeats at configured interval
+4. Repeats at the configured interval
 
 ## Testing
 
@@ -135,8 +132,8 @@ curl -X POST http://localhost:3000/reset
 
 ## Troubleshooting
 
-- **Port in use**: Change `PORT` in `.env`
-- **No NOTAMs found**: Verify `AIRPORT_CODE` is a valid ICAO code
+- **Missing or invalid API key**: Ensure `FAA_NMS_API_KEY` and `FAA_NMS_API_URL` are set and valid
+- **No NOTAMs found**: Verify `AIRPORT_CODE` is a valid ICAO code and that your NMS query parameters are correct
 - **Pager not receiving messages**: Check `PAGER_PHONE_NUMBER` and ensure it's compatible with Spok service
 - **Messages not sending**: Check console logs for API errors
 

@@ -16,11 +16,15 @@ const AIRPORT_CODE = process.env.AIRPORT_CODE || 'KBLM'; // Monmouth Executive A
 const PAGER_PHONE_NUMBER = process.env.PAGER_PHONE_NUMBER;
 const POLL_INTERVAL = parseInt(process.env.POLL_INTERVAL) || 300000; // 5 minutes default
 const STARTUP_SEND_LATEST = process.env.STARTUP_SEND_LATEST !== 'false';
-const FAA_FETCH_TIMEOUT = process.env.FAA_FETCH_TIMEOUT || '15000';
+const FAA_NMS_API_URL = process.env.FAA_NMS_API_URL;
+const FAA_NMS_TIMEOUT = parseInt(process.env.FAA_NMS_TIMEOUT || '15000', 10);
+const FAA_NMS_API_KEY = process.env.FAA_NMS_API_KEY;
 
 // Validate required configuration
 const missingEnv = [];
 if (!PAGER_PHONE_NUMBER) missingEnv.push('PAGER_PHONE_NUMBER');
+if (!FAA_NMS_API_URL) missingEnv.push('FAA_NMS_API_URL');
+if (!FAA_NMS_API_KEY) missingEnv.push('FAA_NMS_API_KEY');
 
 if (missingEnv.length) {
   console.error(`ERROR: Missing required environment variables: ${missingEnv.join(', ')}`);
@@ -154,7 +158,8 @@ app.get('/health', (req, res) => {
     status: 'ok',
     polling: isPolling,
     seenNotams: state.seenNotams.length,
-    faaFetchTimeoutMs: FAA_FETCH_TIMEOUT
+    faaNmsApi: FAA_NMS_API_URL,
+    faaNmsTimeoutMs: FAA_NMS_TIMEOUT
   });
 });
 
