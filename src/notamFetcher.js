@@ -24,8 +24,11 @@ function baseHeaders() {
 }
 
 async function bootstrapSession(client) {
-  await client.fetch(`${FAA_BASE_URL}/nsapp.html`, { headers: baseHeaders() });
-  await client.fetch(`${FAA_BASE_URL}/hdr`, { headers: baseHeaders() });
+  console.log('[notamFetcher] Bootstrapping FAA session...');
+  const splash = await client.fetch(`${FAA_BASE_URL}/nsapp.html`, { headers: baseHeaders() });
+  console.log(`[notamFetcher] nsapp.html status: ${splash.status}`);
+  const hdr = await client.fetch(`${FAA_BASE_URL}/hdr`, { headers: baseHeaders() });
+  console.log(`[notamFetcher] hdr status: ${hdr.status}`);
 }
 
 function buildSearchBody(airportCode) {
@@ -131,6 +134,7 @@ async function fetchNotams(airportCode) {
     await bootstrapSession(client);
 
     const searchBody = buildSearchBody(airportCode);
+    console.log(`[notamFetcher] Posting search for ${airportCode}...`);
 
     const response = await client.fetch(`${FAA_BASE_URL}/search`, {
       method: 'POST',
@@ -140,6 +144,8 @@ async function fetchNotams(airportCode) {
       },
       body: searchBody
     });
+
+    console.log(`[notamFetcher] search status: ${response.status}`);
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -152,6 +158,8 @@ async function fetchNotams(airportCode) {
     });
 
     const list = extractNotams(payload);
+    console.log(`[notamFetcher] parsed NOTAM count: ${list.length}`);
+
     return list.map(formatNotam);
   } catch (error) {
     console.error('Error fetching NOTAMs from FAA:', error.message);

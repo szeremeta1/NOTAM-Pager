@@ -51,14 +51,14 @@ async function pollNotams() {
     
     // Fetch NOTAMs
     const rawNotams = await fetchNotams(AIRPORT_CODE);
-    console.log(`Fetched ${rawNotams.length} NOTAMs`);
+    console.log(`Fetched ${rawNotams.length} NOTAMs from FAA`);
     
     // Format NOTAMs
     const notams = rawNotams.map(formatNotam);
     
     // Get new NOTAMs
     const newNotams = getNewNotams(notams, state);
-    console.log(`Found ${newNotams.length} new NOTAMs`);
+    console.log(`Found ${newNotams.length} new NOTAMs (seen=${state.seenNotams.length})`);
 
     const queue = [...newNotams];
     if (forceSendLatest && queue.length === 0 && notams.length > 0) {
