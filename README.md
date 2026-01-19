@@ -4,7 +4,7 @@ Automatically fetches NOTAMs (Notices to Airmen) for a specified airport and sen
 
 ## What it does
 
-- Polls the FAA NOTAM Search site (https://notams.aim.faa.gov/notamSearch/nsapp.html#/) via headless Playwright: fills the search, downloads the Excel export, parses it, and extracts NOTAM text
+- Drives the FAA NOTAM Search site (https://notams.aim.faa.gov/notamSearch/nsapp.html#/) with Playwright: accepts the disclaimer, fills the search for a location, downloads the Excel export, parses it, and extracts NOTAM text
 - Tracks previously seen NOTAMs to detect new ones
 - Cleans messages (removes emojis, formats text)
 - Sends new NOTAMs to a pager via Spok/USA Mobility web form using direct HTTP POST
@@ -15,7 +15,7 @@ Automatically fetches NOTAMs (Notices to Airmen) for a specified airport and sen
 notam-pager/
 ├── src/
 │   ├── index.js          # Main application with polling logic
-│   ├── notamFetcher.js   # NOTAM API fetching
+│   ├── notamFetcher.js   # Playwright-driven FAA Excel fetch + parsing
 │   ├── messageClean.js   # Emoji removal + formatting
 │   ├── pagerApi.js       # Direct HTTP POST sender
 │   └── stateManager.js   # Tracks seen NOTAMs
@@ -37,6 +37,12 @@ notam-pager/
 
 ```bash
 npm install
+```
+
+If Playwright asks for browsers or fails to launch, install its browsers (one time):
+
+```bash
+npx playwright install
 ```
 
 3. Create a `.env` file based on `.env.example`:
@@ -64,9 +70,11 @@ PAGER_URL=https://secure.spokwireless.net
 - `PAGER_URL` - Pager service URL (default: https://secure.spokwireless.net)
 - `MAX_STORED_NOTAMS` - Maximum number of NOTAM IDs to keep in state (default: 1000)
 - `STARTUP_SEND_LATEST` - When `true` (default), send the most recent NOTAM once at startup even if already seen to verify delivery
-- `FAA_FETCH_TIMEOUT` - Playwright navigation/download timeout in ms (default 30000)
-- `FAA_RETRIES` / `FAA_RETRY_DELAY_MS` - Retry count/delay for the Excel download (defaults 3 / 2000)
-- `FAA_HEADLESS` - Set to `false` to watch the browser for debugging
+- `FAA_BASE_URL` - Base URL for the FAA NOTAM Search (default: https://notams.aim.faa.gov/notamSearch)
+- `FAA_FETCH_TIMEOUT` - Playwright navigation/download timeout in ms (default: 45000)
+- `FAA_RETRIES` / `FAA_RETRY_DELAY_MS` - Retry count/delay for the Excel download (defaults: 3 / 2000)
+- `FAA_HEADLESS` - Set to `false` to watch the browser for debugging (default: true)
+- `FAA_BROWSER` - Browser engine to try first: `chromium`, `firefox`, or `webkit` (default: chromium; others are used as fallbacks)
 
 ### Common Airport Codes
 
