@@ -2,7 +2,7 @@
  * NOTAM Fetcher using Playwright to download the Excel export and parse it.
  */
 
-const { chromium } = require('playwright');
+const { chromium, firefox, webkit } = require('playwright');
 const XLSX = require('xlsx');
 const fs = require('fs/promises');
 const path = require('path');
@@ -14,6 +14,7 @@ const FAA_FETCH_TIMEOUT = parseInt(process.env.FAA_FETCH_TIMEOUT || '30000', 10)
 const FAA_RETRIES = parseInt(process.env.FAA_RETRIES || '3', 10);
 const FAA_RETRY_DELAY_MS = parseInt(process.env.FAA_RETRY_DELAY_MS || '2000', 10);
 const FAA_HEADLESS = process.env.FAA_HEADLESS !== 'false';
+const FAA_BROWSER = (process.env.FAA_BROWSER || 'chromium').toLowerCase();
 
 async function sleep(ms) {
   return new Promise(res => setTimeout(res, ms));
@@ -74,16 +75,25 @@ function parseExcel(filePath) {
 }
 
 async function downloadExcel(airportCode) {
-  const browser = await chromium.launch({ headless: FAA_HEADLESS });
-  const context = await browser.newContext({
-    acceptDownloads: true,
-    userAgent: USER_AGENT,
-    viewport: { width: 1600, height: 900 }
-  });
-  const page = await context.newPage();
+  async function attempt(engineName) {
+    const browserType = { chromium, firefox, webkit }[engineName] || chromium;
+    const browser = await browserType.launch({
+      headless: FAA_HEADLESS,
+      args: ['--disable-http2', '--disable-features=NetworkService']
+    });
+    const context = await browser.newContext({
+      acceptDownloads: true,
+      userAgent: USER_AGENT,
+      viewport: { width: 1600, height: 900 },
+      ignoreHTTPSErrors: true,
+      extraHTTPHeaders: {
+        'Accept-Language': 'en-US,en;q=0.9'
+      }
+    });
+    const page = await context.newPage();
 
-  try {
-    await page.goto(`${FAA_BASE_URL}/nsapp.html#/`, { waitUntil: 'domcontentloaded', timeout: FAA_FETCH_TIMEOUT });
+    try {
+      await page.goto(`${FAA_BASE_URL}/nsapp.html#/`, { waitUntil: 'domcontentloaded', timeout: FAA_FETCH_TIMEOUT });
 
     // Accept disclaimer if present
     const disclaimerButton = page.locator('text="I\'ve read and understood above statements"');
@@ -112,27 +122,43 @@ async function downloadExcel(airportCode) {
       throw new Error('Excel download button not found');
     }
 
-    const [ download ] = await Promise.all([
-      page.waitForEvent('download', { timeout: FAA_FETCH_TIMEOUT }),
-      excelButton.click({ timeout: FAA_FETCH_TIMEOUT })
-    ]);
+      const [ download ] = await Promise.all([
+        page.waitForEvent('download', { timeout: FAA_FETCH_TIMEOUT }),
+        excelButton.click({ timeout: FAA_FETCH_TIMEOUT })
+      ]);
 
-    const tmpPath = path.join(os.tmpdir(), `notam-${airportCode}-${Date.now()}.xlsx`);
-    await download.saveAs(tmpPath);
-    console.log(`[notamFetcher] Downloaded Excel to ${tmpPath}`);
-    return tmpPath;
-  } finally {
-    await context.close();
-    await browser.close();
+      const tmpPath = path.join(os.tmpdir(), `notam-${airportCode}-${Date.now()}.xlsx`);
+      await download.saveAs(tmpPath);
+      console.log(`[notamFetcher] Downloaded Excel to ${tmpPath} using ${engineName}`);
+      return { tmpPath, engineName };
+    } finally {
+      await context.close();
+      await browser.close();
+    }
+  }
+
+  try {
+    try {
+      return await attempt(FAA_BROWSER);
+    } catch (err) {
+      if (err.message && err.message.includes('ERR_HTTP2_PROTOCOL_ERROR') && FAA_BROWSER !== 'firefox') {
+        console.warn('[notamFetcher] HTTP/2 error detected; retrying with firefox...');
+        return await attempt('firefox');
+      }
+      throw err;
+    }
+  } catch (e) {
+    throw e;
   }
 }
 
 async function fetchNotams(airportCode) {
   try {
-    const filePath = await withRetry(() => downloadExcel(airportCode), 'downloadExcel');
+    const result = await withRetry(() => downloadExcel(airportCode), 'downloadExcel');
+    const filePath = result.tmpPath;
     const notams = parseExcel(filePath);
     await fs.unlink(filePath).catch(() => {});
-    console.log(`[notamFetcher] Parsed ${notams.length} NOTAMs from Excel`);
+    console.log(`[notamFetcher] Parsed ${notams.length} NOTAMs from Excel (engine=${result.engineName})`);
     return notams;
   } catch (error) {
     console.error('Error fetching NOTAMs from FAA via Playwright:', error.message);
