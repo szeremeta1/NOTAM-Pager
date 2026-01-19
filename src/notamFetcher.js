@@ -10,7 +10,7 @@ const os = require('os');
 
 const FAA_BASE_URL = process.env.FAA_BASE_URL || 'https://notams.aim.faa.gov/notamSearch';
 const USER_AGENT = 'NOTAM-Pager/2.0 (+https://github.com/szeremeta1/NOTAM-Pager)';
-const FAA_FETCH_TIMEOUT = parseInt(process.env.FAA_FETCH_TIMEOUT || '30000', 10);
+const FAA_FETCH_TIMEOUT = parseInt(process.env.FAA_FETCH_TIMEOUT || '45000', 10);
 const FAA_RETRIES = parseInt(process.env.FAA_RETRIES || '3', 10);
 const FAA_RETRY_DELAY_MS = parseInt(process.env.FAA_RETRY_DELAY_MS || '2000', 10);
 const FAA_HEADLESS = process.env.FAA_HEADLESS !== 'false';
@@ -75,6 +75,9 @@ function parseExcel(filePath) {
 }
 
 async function downloadExcel(airportCode) {
+  const preferred = ['chromium', 'firefox', 'webkit'];
+  const orderedEngines = [FAA_BROWSER, ...preferred.filter(e => e !== FAA_BROWSER)];
+
   async function attempt(engineName) {
     const browserType = { chromium, firefox, webkit }[engineName] || chromium;
     const browser = await browserType.launch({
@@ -91,41 +94,53 @@ async function downloadExcel(airportCode) {
       }
     });
     const page = await context.newPage();
+    page.setDefaultTimeout(FAA_FETCH_TIMEOUT);
+    page.setDefaultNavigationTimeout(FAA_FETCH_TIMEOUT);
 
     try {
-      await page.goto(`${FAA_BASE_URL}/nsapp.html#/`, { waitUntil: 'domcontentloaded', timeout: FAA_FETCH_TIMEOUT });
+      console.log(`[notamFetcher] (${engineName}) navigating to landing page...`);
+      await page.goto(`${FAA_BASE_URL}/nsapp.html#/`, { waitUntil: 'load', timeout: FAA_FETCH_TIMEOUT });
+      await page.waitForLoadState('networkidle', { timeout: FAA_FETCH_TIMEOUT }).catch(() => {});
+      console.log(`[notamFetcher] (${engineName}) landed at NOTAM Search page`);
 
     // Accept disclaimer if present
     const disclaimerButton = page.locator('text="I\'ve read and understood above statements"');
     if (await disclaimerButton.isVisible({ timeout: 2000 }).catch(() => false)) {
       console.log('[notamFetcher] Accepting disclaimer...');
       await disclaimerButton.click({ timeout: 5000 });
+        await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
+        console.log('[notamFetcher] Disclaimer accepted');
     }
 
     // Wait for search form
     await page.waitForSelector('input[ng-model="globalScope.designatorsForLocation"], input[placeholder="Location(s)"]', { timeout: FAA_FETCH_TIMEOUT });
 
     const locationInput = page.locator('input[ng-model="globalScope.designatorsForLocation"], input[placeholder="Location(s)"]');
-    await locationInput.fill('');
-    await locationInput.type(airportCode, { delay: 50 });
+      console.log(`[notamFetcher] (${engineName}) typing airport code ${airportCode}...`);
+      await locationInput.fill('');
+      await locationInput.type(airportCode, { delay: 40 });
 
     // Click search
     const searchButton = page.locator('button:has-text("Search"), input[type="button"][value="Search"], #searchBtn');
-    await searchButton.first().click({ timeout: FAA_FETCH_TIMEOUT });
+      console.log('[notamFetcher] Clicking Search...');
+      await searchButton.first().click({ timeout: FAA_FETCH_TIMEOUT });
 
     // Wait for results count or table
-    await page.waitForSelector('text=/NOTAM\(s\) found/i, table', { timeout: FAA_FETCH_TIMEOUT });
+      await page.waitForSelector('text=/NOTAM\(s\) found/i, table', { timeout: FAA_FETCH_TIMEOUT });
+      console.log('[notamFetcher] Results appear present');
 
     // Click Excel download (desktop toolbar)
     const excelButton = page.locator('button[title="Download to Excel"], a[title="Download to Excel"], .icon-excel').first();
     if (!(await excelButton.isVisible({ timeout: 5000 }).catch(() => false))) {
       throw new Error('Excel download button not found');
     }
+      console.log('[notamFetcher] Clicking Excel download...');
 
       const [ download ] = await Promise.all([
         page.waitForEvent('download', { timeout: FAA_FETCH_TIMEOUT }),
         excelButton.click({ timeout: FAA_FETCH_TIMEOUT })
       ]);
+      console.log('[notamFetcher] Download started, waiting to save...');
 
       const tmpPath = path.join(os.tmpdir(), `notam-${airportCode}-${Date.now()}.xlsx`);
       await download.saveAs(tmpPath);
@@ -137,19 +152,17 @@ async function downloadExcel(airportCode) {
     }
   }
 
-  try {
+  let lastErr;
+  for (const engineName of orderedEngines) {
     try {
-      return await attempt(FAA_BROWSER);
+      console.log(`[notamFetcher] Trying browser engine: ${engineName}`);
+      return await attempt(engineName);
     } catch (err) {
-      if (err.message && err.message.includes('ERR_HTTP2_PROTOCOL_ERROR') && FAA_BROWSER !== 'firefox') {
-        console.warn('[notamFetcher] HTTP/2 error detected; retrying with firefox...');
-        return await attempt('firefox');
-      }
-      throw err;
+      lastErr = err;
+      console.warn(`[notamFetcher] Engine ${engineName} failed: ${err.message}`);
     }
-  } catch (e) {
-    throw e;
   }
+  throw lastErr;
 }
 
 async function fetchNotams(airportCode) {
