@@ -15,14 +15,11 @@ const PORT = process.env.PORT || 3000;
 const AIRPORT_CODE = process.env.AIRPORT_CODE || 'KBLM'; // Monmouth Executive Airport
 const PAGER_PHONE_NUMBER = process.env.PAGER_PHONE_NUMBER;
 const POLL_INTERVAL = parseInt(process.env.POLL_INTERVAL) || 300000; // 5 minutes default
-const DTN_CLIENT_ID = process.env.DTN_CLIENT_ID;
-const DTN_CLIENT_SECRET = process.env.DTN_CLIENT_SECRET;
+const STARTUP_SEND_LATEST = process.env.STARTUP_SEND_LATEST !== 'false';
 
 // Validate required configuration
 const missingEnv = [];
 if (!PAGER_PHONE_NUMBER) missingEnv.push('PAGER_PHONE_NUMBER');
-if (!DTN_CLIENT_ID) missingEnv.push('DTN_CLIENT_ID');
-if (!DTN_CLIENT_SECRET) missingEnv.push('DTN_CLIENT_SECRET');
 
 if (missingEnv.length) {
   console.error(`ERROR: Missing required environment variables: ${missingEnv.join(', ')}`);
@@ -32,6 +29,7 @@ if (missingEnv.length) {
 let state = { seenNotams: [] };
 let pollingTimer = null;
 let isPolling = false;
+let startupProbePending = true;
 
 // Middleware
 app.use(express.json());
@@ -41,6 +39,7 @@ app.use(express.urlencoded({ extended: true }));
  * Poll for new NOTAMs and send them to the pager
  */
 async function pollNotams() {
+  const forceSendLatest = startupProbePending && STARTUP_SEND_LATEST;
   if (isPolling) {
     console.log('Polling already in progress, skipping...');
     return;
@@ -60,9 +59,15 @@ async function pollNotams() {
     // Get new NOTAMs
     const newNotams = getNewNotams(notams, state);
     console.log(`Found ${newNotams.length} new NOTAMs`);
+
+    const queue = [...newNotams];
+    if (forceSendLatest && queue.length === 0 && notams.length > 0) {
+      queue.push(notams[0]);
+      console.log(`Startup probe: sending latest NOTAM ${notams[0].id}`);
+    }
     
     // Process each new NOTAM
-    for (const notam of newNotams) {
+    for (const notam of queue) {
       console.log(`Processing new NOTAM: ${notam.id}`);
       
       // Clean the message
@@ -87,7 +92,9 @@ async function pollNotams() {
     
     // Save state
     await saveState(state);
-    
+    if (forceSendLatest) {
+      startupProbePending = false;
+    }
   } catch (error) {
     console.error('Error during polling:', error);
   } finally {

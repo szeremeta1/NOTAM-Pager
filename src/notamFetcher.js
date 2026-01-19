@@ -1,128 +1,114 @@
 /**
- * NOTAM Fetcher
- * Fetches NOTAMs from the DTN Aviation NOTAM API
+ * NOTAM Fetcher (FAA public NOTAM Search)
+ * Uses the public endpoints seen in the HAR capture.
  */
 
 const fetch = require('node-fetch');
+const fetchCookie = require('fetch-cookie').default;
+const { CookieJar } = require('tough-cookie');
 
-const DTN_TOKEN_URL = process.env.DTN_TOKEN_URL || 'https://api.auth.dtn.com/v1/tokens/authorize';
-const DTN_CLIENT_ID = process.env.DTN_CLIENT_ID;
-const DTN_CLIENT_SECRET = process.env.DTN_CLIENT_SECRET;
-const DTN_AUDIENCE = process.env.DTN_AUDIENCE || 'https://aviation.api.dtn.com';
-const DTN_API_BASE = process.env.DTN_API_BASE || 'https://aviation.api.dtn.com';
-const DTN_LIMIT = parseInt(process.env.DTN_LIMIT, 10) || 1000; // API default 1000
+const FAA_BASE_URL = process.env.FAA_BASE_URL || 'https://notams.aim.faa.gov/notamSearch';
+const USER_AGENT = 'NOTAM-Pager/2.0 (+https://github.com/szeremeta1/NOTAM-Pager)';
 
-// Cache the access token to avoid requesting on every poll
-let tokenCache = {
-  accessToken: null,
-  expiresAt: 0
-};
+function createClient() {
+  const jar = new CookieJar();
+  const wrappedFetch = fetchCookie(fetch, jar);
+  return { fetch: wrappedFetch, jar };
+}
 
-// Request a DTN access token using client credentials
-async function getAccessToken() {
-  if (!DTN_CLIENT_ID || !DTN_CLIENT_SECRET) {
-    throw new Error('DTN_CLIENT_ID and DTN_CLIENT_SECRET must be set in the environment');
-  }
-
-  const now = Date.now();
-  if (tokenCache.accessToken && now < tokenCache.expiresAt) {
-    return tokenCache.accessToken;
-  }
-
-  const res = await fetch(DTN_TOKEN_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json'
-    },
-    body: JSON.stringify({
-      grant_type: 'client_credentials',
-      client_id: DTN_CLIENT_ID,
-      client_secret: DTN_CLIENT_SECRET,
-      audience: DTN_AUDIENCE
-    })
-  });
-
-  if (!res.ok) {
-    const errorBody = await res.text();
-    throw new Error(`DTN auth failed (${res.status}): ${errorBody.slice(0, 300)}`);
-  }
-
-  const json = await res.json();
-  const accessToken = json.data?.access_token;
-  const expiresIn = json.data?.expires_in || 60;
-
-  if (!accessToken) {
-    throw new Error('DTN auth response missing access_token');
-  }
-
-  // Refresh slightly early to be safe
-  tokenCache = {
-    accessToken,
-    expiresAt: now + (expiresIn - 10) * 1000
+function baseHeaders() {
+  return {
+    'User-Agent': USER_AGENT,
+    Accept: 'application/json,text/plain,*/*'
   };
-
-  return accessToken;
 }
 
-/**
- * Fetch NOTAMs for a specific airport from DTN
- * @param {string} airportCode - Airport ICAO code (e.g., KBLM)
- * @returns {Promise<Array>} - Array of NOTAM objects
- */
-async function fetchNotams(airportCode) {
-  try {
-    const token = await getAccessToken();
-    const url = `${DTN_API_BASE}/v1/notams/?stationId=${encodeURIComponent(airportCode)}&limit=${DTN_LIMIT}`;
+async function bootstrapSession(client) {
+  await client.fetch(`${FAA_BASE_URL}/nsapp.html`, { headers: baseHeaders() });
+  await client.fetch(`${FAA_BASE_URL}/hdr`, { headers: baseHeaders() });
+}
 
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        Accept: 'application/json',
-        Authorization: `Bearer ${token}`,
-        'User-Agent': 'NOTAM-Pager/1.0'
-      }
-    });
+function buildSearchBody(airportCode) {
+  return new URLSearchParams({
+    searchType: 0,
+    designatorsForLocation: airportCode,
+    designatorForAccountable: '',
+    latDegrees: '',
+    latMinutes: '',
+    latSeconds: '',
+    longDegrees: '',
+    longMinutes: '',
+    longSeconds: '',
+    radius: '',
+    sortColumns: '',
+    sortDirection: 'true',
+    designatorForNotamNumberSearch: '',
+    notamNumber: '',
+    radiusSearchOnDesignator: '',
+    radiusSearchDesignator: '',
+    latitudeDirection: 'N',
+    longitudeDirection: 'W',
+    freeFormText: '',
+    flightPathText: '',
+    flightPathDivertAirfields: '',
+    flightPathBuffer: '',
+    flightPathIncludeNavaids: '',
+    flightPathIncludeArtcc: '',
+    flightPathIncludeTfr: '',
+    flightPathIncludeRegulatory: '',
+    flightPathResultsType: '',
+    archiveDate: '',
+    archiveDesignator: '',
+    offset: 0,
+    notamsOnly: true,
+    filters: '',
+    minRunwayLength: '',
+    minRunwayWidth: '',
+    runwaySurfaceTypes: '',
+    predefinedAbraka: '',
+    predefinedDabra: '',
+    flightPathAddlBuffer: '',
+    recaptchaToken: ''
+  });
+}
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`DTN NOTAM API returned ${response.status}: ${errorText.slice(0, 300)}`);
-      return [];
+function extractNotams(data) {
+  if (!data) return [];
+
+  const buckets = [
+    data.notams,
+    data.data,
+    data.notamList,
+    data.results,
+    data.rows,
+    Array.isArray(data) ? data : null
+  ];
+
+  for (const bucket of buckets) {
+    if (Array.isArray(bucket)) {
+      return bucket;
     }
-
-    const data = await response.json();
-    const notams = data.notams || data.data || [];
-    return Array.isArray(notams) ? notams : [];
-  } catch (error) {
-    console.error('Error fetching NOTAMs:', error.message);
-    return [];
   }
+
+  return [];
 }
 
-/**
- * Extract a unique identifier from a NOTAM
- * @param {Object} notam - NOTAM object
- * @returns {string} - Unique identifier
- */
 function getNotamId(notam) {
-  const id = notam.notamId ||
-             notam.id ||
-             notam.notamNumber ||
-             notam.number ||
-             notam.notamID ||
-             notam.icaoId;
+  const id = notam?.transactionId ||
+             notam?.notamId ||
+             notam?.id ||
+             notam?.notamNumber ||
+             notam?.number ||
+             notam?.notamID ||
+             notam?.icaoId ||
+             notam?.icao;
 
   if (id) return String(id);
 
-  const fallbackId = `${notam.raw_text || notam.message || notam.text || ''}_${notam.issueDateTime || ''}_${notam.stationId || ''}`;
-  return fallbackId || `notam_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  const fallbackId = `${notam?.raw_text || notam?.message || notam?.text || ''}_${notam?.issueDateTime || notam?.issueDate || ''}_${notam?.stationId || ''}`;
+  return fallbackId || `notam_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-/**
- * Format NOTAM data for consistent handling
- * @param {Object} rawNotam - Raw NOTAM from API
- * @returns {Object} - Formatted NOTAM object
- */
 function formatNotam(rawNotam) {
   return {
     id: getNotamId(rawNotam),
@@ -131,10 +117,46 @@ function formatNotam(rawNotam) {
           rawNotam.message ||
           rawNotam.text ||
           rawNotam.icaoMessage ||
+          rawNotam.notam ||
           'No message text available',
     number: rawNotam.notamId || rawNotam.notamNumber || rawNotam.number || rawNotam.id,
     raw: rawNotam
   };
+}
+
+async function fetchNotams(airportCode) {
+  const client = createClient();
+
+  try {
+    await bootstrapSession(client);
+
+    const searchBody = buildSearchBody(airportCode);
+
+    const response = await client.fetch(`${FAA_BASE_URL}/search`, {
+      method: 'POST',
+      headers: {
+        ...baseHeaders(),
+        'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8'
+      },
+      body: searchBody
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`FAA NOTAM search failed ${response.status}: ${errorText.slice(0, 200)}`);
+    }
+
+    const payload = await response.json().catch(async () => {
+      const text = await response.text();
+      throw new Error(`FAA NOTAM search returned non-JSON: ${text.slice(0, 200)}`);
+    });
+
+    const list = extractNotams(payload);
+    return list.map(formatNotam);
+  } catch (error) {
+    console.error('Error fetching NOTAMs from FAA:', error.message);
+    return [];
+  }
 }
 
 module.exports = {

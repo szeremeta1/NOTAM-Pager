@@ -4,7 +4,7 @@ Automatically fetches NOTAMs (Notices to Airmen) for a specified airport and sen
 
 ## What it does
 
-- Polls the FAA NOTAM Search API for NOTAMs at a specified airport (default: KBLM - Monmouth Executive Airport)
+- Polls the FAA NOTAM Search site (https://notams.aim.faa.gov/notamSearch/nsapp.html#/) for NOTAMs at a specified airport (default: KBLM - Monmouth Executive Airport)
 - Tracks previously seen NOTAMs to detect new ones
 - Cleans messages (removes emojis, formats text)
 - Sends new NOTAMs to a pager via Spok/USA Mobility web form using direct HTTP POST
@@ -28,6 +28,7 @@ notam-pager/
 
 - Node.js 18+ recommended
 - A pager number compatible with Spok/USA Mobility service
+- Outbound HTTPS access to https://notams.aim.faa.gov/notamSearch
 
 ## Installation
 
@@ -62,6 +63,7 @@ PAGER_URL=https://secure.spokwireless.net
 - `PAGER_PHONE_NUMBER` - **REQUIRED** Your pager number
 - `PAGER_URL` - Pager service URL (default: https://secure.spokwireless.net)
 - `MAX_STORED_NOTAMS` - Maximum number of NOTAM IDs to keep in state (default: 1000)
+- `STARTUP_SEND_LATEST` - When `true` (default), send the most recent NOTAM once at startup even if already seen to verify delivery
 
 ### Common Airport Codes
 
@@ -91,7 +93,7 @@ The service will:
 
 ## How it works
 
-1. Application polls FAA NOTAM Search API at regular intervals
+1. Application polls the FAA NOTAM Search site (public endpoints extracted from the HAR) at regular intervals
 2. Compares fetched NOTAMs against previously seen ones (stored in `notam-state.json`)
 3. For each new NOTAM:
    - Formats and cleans the message (removes emojis, truncates to 240 chars)
