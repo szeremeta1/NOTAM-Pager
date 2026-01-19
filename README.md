@@ -1,6 +1,6 @@
 # NOTAM-Pager
 
-Automatically fetches NOTAMs (Notices to Air Missions) for a specified airport and sends new ones to a pager number. Similar to [uptime-kuma-pager](https://github.com/szeremeta1/uptime-kuma-pager), this service strips emojis and unsupported characters to ensure pager compatibility.
+Automatically fetches NOTAMs (Notices to Airmen) for a specified airport and sends new ones to a pager number. Similar to [uptime-kuma-pager](https://github.com/szeremeta1/uptime-kuma-pager), this service strips emojis and unsupported characters to ensure pager compatibility.
 
 ## What it does
 
