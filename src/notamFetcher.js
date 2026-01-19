@@ -10,6 +10,8 @@ const { CookieJar } = require('tough-cookie');
 const FAA_BASE_URL = process.env.FAA_BASE_URL || 'https://notams.aim.faa.gov/notamSearch';
 const USER_AGENT = 'NOTAM-Pager/2.0 (+https://github.com/szeremeta1/NOTAM-Pager)';
 const FAA_FETCH_TIMEOUT = parseInt(process.env.FAA_FETCH_TIMEOUT || '15000', 10);
+const FAA_RETRIES = parseInt(process.env.FAA_RETRIES || '3', 10);
+const FAA_RETRY_DELAY_MS = parseInt(process.env.FAA_RETRY_DELAY_MS || '2000', 10);
 
 function createClient() {
   const jar = new CookieJar();
@@ -24,11 +26,35 @@ function baseHeaders() {
   };
 }
 
+async function fetchWithRetry(fetchFn, label) {
+  let attempt = 0;
+  let lastError;
+  while (attempt < FAA_RETRIES) {
+    try {
+      attempt += 1;
+      const res = await fetchFn();
+      return res;
+    } catch (err) {
+      lastError = err;
+      console.warn(`[notamFetcher] ${label} attempt ${attempt}/${FAA_RETRIES} failed: ${err.message}`);
+      if (attempt >= FAA_RETRIES) break;
+      await new Promise(r => setTimeout(r, FAA_RETRY_DELAY_MS));
+    }
+  }
+  throw lastError;
+}
+
 async function bootstrapSession(client) {
   console.log('[notamFetcher] Bootstrapping FAA session...');
-  const splash = await client.fetch(`${FAA_BASE_URL}/nsapp.html`, { headers: baseHeaders(), timeout: FAA_FETCH_TIMEOUT });
+  const splash = await fetchWithRetry(
+    () => client.fetch(`${FAA_BASE_URL}/nsapp.html`, { headers: baseHeaders(), timeout: FAA_FETCH_TIMEOUT }),
+    'nsapp.html'
+  );
   console.log(`[notamFetcher] nsapp.html status: ${splash.status}`);
-  const hdr = await client.fetch(`${FAA_BASE_URL}/hdr`, { headers: baseHeaders(), timeout: FAA_FETCH_TIMEOUT });
+  const hdr = await fetchWithRetry(
+    () => client.fetch(`${FAA_BASE_URL}/hdr`, { headers: baseHeaders(), timeout: FAA_FETCH_TIMEOUT }),
+    'hdr'
+  );
   console.log(`[notamFetcher] hdr status: ${hdr.status}`);
 }
 
