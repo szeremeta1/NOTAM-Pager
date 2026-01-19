@@ -15,10 +15,17 @@ const PORT = process.env.PORT || 3000;
 const AIRPORT_CODE = process.env.AIRPORT_CODE || 'KBLM'; // Monmouth Executive Airport
 const PAGER_PHONE_NUMBER = process.env.PAGER_PHONE_NUMBER;
 const POLL_INTERVAL = parseInt(process.env.POLL_INTERVAL) || 300000; // 5 minutes default
+const DTN_CLIENT_ID = process.env.DTN_CLIENT_ID;
+const DTN_CLIENT_SECRET = process.env.DTN_CLIENT_SECRET;
 
 // Validate required configuration
-if (!PAGER_PHONE_NUMBER) {
-  console.error('ERROR: PAGER_PHONE_NUMBER must be set in .env file');
+const missingEnv = [];
+if (!PAGER_PHONE_NUMBER) missingEnv.push('PAGER_PHONE_NUMBER');
+if (!DTN_CLIENT_ID) missingEnv.push('DTN_CLIENT_ID');
+if (!DTN_CLIENT_SECRET) missingEnv.push('DTN_CLIENT_SECRET');
+
+if (missingEnv.length) {
+  console.error(`ERROR: Missing required environment variables: ${missingEnv.join(', ')}`);
   process.exit(1);
 }
 
